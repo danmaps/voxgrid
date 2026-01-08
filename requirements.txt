@@ -9,3 +9,4 @@ plotly>=5.18.0
 matplotlib>=3.8.0
 laspy>=2.5.1
 scikit-image>=0.22.0
+requests>=2.31.0

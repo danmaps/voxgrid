@@ -80,3 +80,169 @@ def voxel_centers(indices: np.ndarray, origin: np.ndarray, voxel_size: Tuple[flo
     """
     vs = np.array(voxel_size, dtype=np.float32)
     return origin + (indices.astype(np.float32) + 0.5) * vs
+
+
+def voxelize_labeled_points(
+    xyz: np.ndarray,
+    labels: np.ndarray,
+    voxel_size: Tuple[float, float, float] = (1.0, 1.0, 1.0),
+    bounds: Optional[Tuple[Tuple[float, float, float], Tuple[float, float, float]]] = None,
+):
+    """
+    Voxelize points with categorical labels. Returns total grid, origin, shape, and per-label grids.
+
+    Parameters
+    ----------
+    xyz : (N,3) float32
+    labels : (N,) int or uint8, category id per point
+    voxel_size : (sx, sy, sz)
+    bounds : optional explicit bounds
+
+    Returns
+    -------
+    total_grid : np.ndarray (nx, ny, nz)
+    origin : np.ndarray (3,)
+    shape : (nx, ny, nz)
+    label_grids : dict[int, np.ndarray] mapping label -> grid counts
+    """
+    if xyz.ndim != 2 or xyz.shape[1] != 3:
+        raise ValueError("xyz must be a (N,3) array")
+    if labels.ndim != 1 or labels.shape[0] != xyz.shape[0]:
+        raise ValueError("labels must be a (N,) array aligned with xyz")
+
+    xyz = np.asarray(xyz, dtype=np.float32)
+    labels = np.asarray(labels)
+
+    if bounds is None:
+        mn = xyz.min(axis=0)
+        mx = xyz.max(axis=0)
+    else:
+        mn = np.array(bounds[0], dtype=np.float32)
+        mx = np.array(bounds[1], dtype=np.float32)
+
+    vs = np.array(voxel_size, dtype=np.float32)
+    shape = np.ceil((mx - mn) / vs).astype(int)
+    shape = np.maximum(shape, 1)
+
+    ijk = np.floor((xyz - mn) / vs).astype(int)
+    ijk = np.clip(ijk, 0, shape - 1)
+    linear_idx = np.ravel_multi_index(ijk.T, shape)
+
+    total_counts = np.bincount(linear_idx, minlength=int(np.prod(shape))).reshape(shape)
+
+    label_grids = {}
+    for lab in np.unique(labels):
+        mask = labels == lab
+        li = linear_idx[mask]
+        if li.size == 0:
+            label_grids[int(lab)] = np.zeros(shape, dtype=np.int64)
+        else:
+            label_grids[int(lab)] = np.bincount(li, minlength=int(np.prod(shape))).reshape(shape)
+
+    return total_counts, mn, tuple(int(x) for x in shape), label_grids
+
+
+def voxelize_to_voxel_grid(
+    xyz: np.ndarray,
+    labels: np.ndarray,
+    voxel_size: Tuple[float, float, float] = (1.0, 1.0, 1.0),
+    bounds: Optional[Tuple[Tuple[float, float, float], Tuple[float, float, float]]] = None,
+) -> Tuple[np.ndarray, np.ndarray, Tuple[int, int, int]]:
+    """
+    Create a true voxel grid (3D array of category IDs) from labeled point cloud, VoxCity-style.
+    
+    Steps:
+    1. Aggregate points to 2D horizontal grid (xy plane)
+    2. Per cell: find dominant label and max height
+    3. Extrude each cell vertically to create 3D voxel grid
+    
+    Parameters
+    ----------
+    xyz : (N,3) float32
+    labels : (N,) uint8 category IDs
+    voxel_size : (sx, sy, sz)
+    bounds : optional explicit bounds
+    
+    Returns
+    -------
+    voxel_grid : (nx, ny, nz) uint8 array of category IDs (0=void/air)
+    origin : (3,) array
+    shape : (nx, ny, nz) tuple
+    """
+    if xyz.ndim != 2 or xyz.shape[1] != 3:
+        raise ValueError("xyz must be a (N,3) array")
+    if labels.ndim != 1 or labels.shape[0] != xyz.shape[0]:
+        raise ValueError("labels must be (N,) aligned with xyz")
+    
+    xyz = np.asarray(xyz, dtype=np.float32)
+    labels = np.asarray(labels, dtype=np.uint8)
+    
+    if bounds is None:
+        mn = xyz.min(axis=0)
+        mx = xyz.max(axis=0)
+    else:
+        mn = np.array(bounds[0], dtype=np.float32)
+        mx = np.array(bounds[1], dtype=np.float32)
+    
+    vs = np.array(voxel_size, dtype=np.float32)
+    
+    # 2D horizontal grid (xy plane only)
+    shape_2d = np.ceil((mx[:2] - mn[:2]) / vs[:2]).astype(int)
+    shape_2d = np.maximum(shape_2d, 1)
+    
+    # Map xy to 2D grid indices
+    ij = np.floor((xyz[:, :2] - mn[:2]) / vs[:2]).astype(int)
+    ij = np.clip(ij, 0, shape_2d - 1)
+    
+    # Aggregate: per cell, find dominant label and max height
+    cell_to_label = {}
+    cell_to_maxz = {}
+    for idx, (i, j) in enumerate(ij):
+        key = (i, j)
+        label = labels[idx]
+        z = xyz[idx, 2]
+        if key not in cell_to_label:
+            cell_to_label[key] = [label]
+            cell_to_maxz[key] = z
+        else:
+            cell_to_label[key].append(label)
+            cell_to_maxz[key] = max(cell_to_maxz[key], z)
+    
+    # Determine dominant label per cell
+    cell_dominant = {}
+    for key, label_list in cell_to_label.items():
+        # Most common label in the cell
+        unique, counts = np.unique(label_list, return_counts=True)
+        cell_dominant[key] = unique[np.argmax(counts)]
+    
+    # Determine z-extent
+    z_min = mn[2]
+    z_max_vals = list(cell_to_maxz.values())
+    if z_max_vals:
+        z_max = max(z_max_vals)
+    else:
+        z_max = z_min + vs[2]
+    
+    # Number of voxels in z direction
+    nz = max(1, int(np.ceil((z_max - z_min) / vs[2])))
+    
+    # Create 3D voxel grid (initialized to 0 = void/air)
+    voxel_grid = np.zeros((shape_2d[0], shape_2d[1], nz), dtype=np.uint8)
+    
+    # Create dense synthetic ground plane: fill entire base layer with terrain (category 0)
+    # This ensures wall-to-wall continuous ground coverage independent of sparse point data
+    voxel_grid[:, :, 0] = 0  # terrain/water base at z=0 for ALL xy positions
+    
+    # Extrude each cell vertically (will overwrite base terrain where buildings/roads/trees exist)
+    for (i, j), label in cell_dominant.items():
+        max_z = cell_to_maxz[(i, j)]
+        # Number of voxels to fill from z_min to max_z
+        n_fill = int(np.ceil((max_z - z_min) / vs[2]))
+        n_fill = min(n_fill, nz)  # Clip to grid bounds
+        if n_fill > 0:
+            voxel_grid[i, j, :n_fill] = label
+    
+    origin = mn
+    shape = tuple([shape_2d[0], shape_2d[1], nz])
+    
+    return voxel_grid, origin, shape

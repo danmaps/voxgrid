@@ -20,6 +20,16 @@ VoxGrid borrows the best visualization tricks and voxelization patterns from Vox
 - Compact 3D preview of thresholded voxels (Plotly)
 - Optional pathways to MIP (max intensity projection) and isosurface extraction (skimage)
 
+### VoxCity Mode (OSM-backed)
+
+- Toggle "Use VoxCity" in the sidebar to fetch buildings, roads, and green areas from OpenStreetMap via Overpass for a given lon/lat rectangle.
+- This generates a synthetic point cloud: buildings extruded by estimated heights (from OSM tags), roads as surface ribbons, greens as canopy volumes.
+- Category-aware voxelization with VoxCity-inspired colors:
+  - Buildings: light gray, Roads: asphalt gray, Vegetation: green, Terrain/Water: blue.
+- Some networks (corporate proxies) cause SSL certificate errors. Use the sidebar "Advanced (Overpass)" → "Skip SSL verification" to work around.
+- The app tries multiple Overpass mirrors; increase the timeout if requests fail intermittently.
+- You can also set your proxy environment (e.g., `HTTP_PROXY`, `HTTPS_PROXY`) before running Streamlit.
+
 ## Quick Start
 
 ### 1) Create and activate a virtual environment
@@ -64,6 +74,7 @@ voxgrid/
 ├── voxgrid_demo.py            # Streamlit demo app
 ├── tools/
 │   └── make_npz_from_csv.py   # CSV → NPZ conversion helper
+│   └── voxcity_api.py          # Overpass (OSM) fetch + sampling into points
 ├── requirements.txt           # Minimal dependencies
 └── voxcity_demo.ipynb         # Original notebook (reference only)
 ```
@@ -82,6 +93,7 @@ voxgrid/
 - Add LAS/LAZ upload via `laspy` and simple preprocessing
 - URL state encoding for shareable deep links (axis/index/threshold)
 - Lightweight analysis layers (e.g., density-based hotspots)
+- Optional Earth Engine integration for DEM (USGS 3DEP), canopy (Meta Trees), landcover (UrbanWatch), and Microsoft Building Footprints enrichment
 
 ## License
 
