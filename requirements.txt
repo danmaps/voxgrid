@@ -1,28 +1,11 @@
-# VoxCity SCE Asset Visualization Platform
-# Python package dependencies
+# VoxGrid (GDAL-free)
+# Minimal dependencies for voxelization + Streamlit visualization
 
-# Core dependencies
 streamlit>=1.31.0
-voxcity>=0.1.0
-
-# Geospatial and mapping
-folium>=0.15.0
-streamlit-folium>=0.17.0
-geopandas>=0.14.0
-shapely>=2.0.0
-
-# Data processing
 numpy>=1.24.0
 pandas>=2.0.0
 scipy>=1.11.0
-
-# Visualization
 plotly>=5.18.0
 matplotlib>=3.8.0
-
-# Earth Engine (required by VoxCity)
-earthengine-api>=0.1.0
-
-# Optional: Performance and utilities
-pyarrow>=14.0.0
-requests>=2.31.0
+laspy>=2.5.1
+scikit-image>=0.22.0
