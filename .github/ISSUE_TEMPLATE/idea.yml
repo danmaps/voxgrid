@@ -1,0 +1,35 @@
+name: Idea
+description: Suggest an improvement
+title: "Idea: <short summary>"
+labels: ["idea"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the idea.
+
+        Quick ask: please search existing issues first so we don’t create duplicates.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What are you trying to do? What’s painful today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should we build/change?
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes / links
+      description: Any references, screenshots, or related issues
+    validations:
+      required: false
